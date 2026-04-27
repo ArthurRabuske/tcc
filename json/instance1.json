@@ -1,0 +1,14 @@
+{
+    "name"         : "dhcp-server",
+    "start-ip"     : "10.0.0.101",
+    "end-ip"       : "10.0.0.200",
+    "server-id"    : "10.0.0.2",
+    "server-mac"   : "aa:bb:cc:dd:ee:ff",
+    "router-ip"    : "10.0.0.1",
+    "broadcast-ip" : "10.0.0.255",
+    "subnet-mask"  : "255.255.255.0",
+    "lease-time"   : "60",
+    "ip-forwarding": "true",
+    "domain-name"  : "mininet-domain-name"
+    
+}

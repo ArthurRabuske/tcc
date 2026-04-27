@@ -1,0 +1,5 @@
+{
+        "enable" : "true",
+        "lease-gc-period" : "10",
+        "dynamic-lease" : "false"
+    }
