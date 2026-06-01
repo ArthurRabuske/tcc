@@ -132,5 +132,11 @@ if __name__ == '__main__':
         report(report_file,args,running_data)
     
     
-    send_email_with_attachment(f'({args.controller_name}) Task completed', 'Experiment finished successfully', [avg_file,report_file])
+    # Envio de e-mail é opcional. Ative com: SDNBM_SEND_EMAIL=1
+    if os.environ.get("SDNBM_SEND_EMAIL", "").strip() == "1":
+        send_email_with_attachment(
+            f'({args.controller_name}) Task completed',
+            'Experiment finished successfully',
+            [avg_file, report_file],
+        )
 

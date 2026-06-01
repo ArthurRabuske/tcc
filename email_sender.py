@@ -1,16 +1,23 @@
-import smtplib, argparse
+import smtplib, argparse, os
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
 from email import encoders
 
 def send_email_with_attachment(subject, message, attachment_path):
-    sender_email = "soad.san@gmail.com"
-    receiver_email = "sandinojardim@gmail.com"
-    smtp_server = "smtp.gmail.com"
-    smtp_port = 587  # For TLS
-    username = "soad.san"
-    password = "mmsgvdnrprqizeoa"
+    sender_email = os.environ.get("SDNBM_EMAIL_FROM", "")
+    receiver_email = os.environ.get("SDNBM_EMAIL_TO", "")
+    smtp_server = os.environ.get("SDNBM_SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(os.environ.get("SDNBM_SMTP_PORT", "587"))  # TLS default
+    username = os.environ.get("SDNBM_SMTP_USER", "")
+    password = os.environ.get("SDNBM_SMTP_PASS", "")
+
+    if not (sender_email and receiver_email and username and password):
+        raise RuntimeError(
+            "Configuração de e-mail ausente. Defina as variáveis de ambiente "
+            "SDNBM_EMAIL_FROM, SDNBM_EMAIL_TO, SDNBM_SMTP_USER e SDNBM_SMTP_PASS "
+            "(opcional: SDNBM_SMTP_HOST, SDNBM_SMTP_PORT)."
+        )
 
     # Create a multipart email message
     email_message = MIMEMultipart()

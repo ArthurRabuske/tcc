@@ -407,6 +407,51 @@ Colunas do CSV (`script_topology.py`):
 
 ---
 
+## Visualização em gráficos (PNG)
+
+Os experimentos de descoberta de topologia geram um CSV com médias em `output/*_average_topology_discovery_time.csv`.
+Para transformar isso em gráficos (melhor para relatório/apresentação do TCC), use o script `plot_results.py`.
+
+### Instalar dependência de gráficos
+
+Na VM Mininet:
+
+```bash
+cd tcc
+pip3 install -r requirements.txt
+```
+
+Se o `pip3` não existir, instale primeiro:
+
+```bash
+sudo apt update
+sudo apt install -y python3-pip
+```
+
+### Gerar gráficos para todos os CSVs
+
+```bash
+cd tcc
+python3 plot_results.py
+```
+
+Isso cria os PNGs em `output/plots/` (por padrão), com:
+
+- `*_times.png`: linhas de `avg_tdt`, `avg_ldt`, `avg_total`
+- `*_cpu_mem.png`: `avg_cpu` e `avg_memory`
+- `*_traffic_bytes.png`: `avg_lldp_len` e `avg_pkt_len`
+- `*_traffic_count.png`: `avg_lldp_count` e `avg_pkt_count`
+- `*_summary.png`: figura consolidada (4 subplots)
+
+### Gerar gráficos para um CSV específico
+
+```bash
+cd tcc
+python3 plot_results.py --input output/onos_mesh_average_topology_discovery_time.csv
+```
+
+---
+
 ## Referência de arquivos
 
 ### Scripts principais (raiz do projeto)
@@ -491,13 +536,20 @@ Edite `global_variables.py` com IP, usuário e senha corretos da VM ONOS. SSH de
 
 ### E-mail no final do experimento falha
 
-`script_topology.py` chama `email_sender.py` automaticamente. Se não for usar e-mail, comente a última linha de `script_topology.py`:
+Por padrão, o projeto **não envia e-mail**. Para habilitar, defina `SDNBM_SEND_EMAIL=1` e configure as variáveis abaixo.
 
-```python
-# send_email_with_attachment(...)
+Variáveis de ambiente necessárias:
+
+```bash
+export SDNBM_SEND_EMAIL=1
+export SDNBM_EMAIL_FROM="seu@email.com"
+export SDNBM_EMAIL_TO="destino@email.com"
+export SDNBM_SMTP_USER="usuario_smtp"
+export SDNBM_SMTP_PASS="senha_ou_app_password"
+# opcionais
+export SDNBM_SMTP_HOST="smtp.gmail.com"
+export SDNBM_SMTP_PORT="587"
 ```
-
-Ou configure `email_sender.py` com suas credenciais SMTP.
 
 ### `response_time.py` / `throughput_request.py` dão erro de argumentos
 
