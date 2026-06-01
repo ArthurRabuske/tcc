@@ -14,4 +14,4 @@ count_lldp = 0
 count_cpu = 0
 count_memory = 0
 
-controller_monitor = ControllerMonitor('java','sdnbm.dei.uc.pt', 'admin', 'b1vbx11')
+controller_monitor = ControllerMonitor('java','192.168.0.134', 'onos', '1234')

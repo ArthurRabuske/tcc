@@ -7,21 +7,21 @@ from arguments_parser import parser
 
 def run_topology_discovery(controller_ip , controller_port, controller_name, rest_port, target_length, query_interval, consec_failures, iface, nolinks):
     if nolinks:
-        cmd = ['python3', 'topology_discovery.py', '-ip', controller_ip, '-p', controller_port, '-n', controller_name, '-r', rest_port,'-l', str(target_length),'-q', str(query_interval),'-c', str(consec_failures),'-if', iface, '-k']
+        cmd = ['python3', 'topology_discovery.py', '-ip', controller_ip, '-p', str(controller_port), '-n', controller_name, '-r', rest_port,'-l', str(target_length),'-q', str(query_interval),'-c', str(consec_failures),'-if', iface, '-k']
     else:
-        cmd = ['python3', 'topology_discovery.py', '-ip', controller_ip, '-p', controller_port, '-n', controller_name, '-r', rest_port,'-l', str(target_length),'-q', str(query_interval),'-c', str(consec_failures),'-if', iface]
+        cmd = ['python3', 'topology_discovery.py', '-ip', controller_ip, '-p', str(controller_port), '-n', controller_name, '-r', rest_port,'-l', str(target_length),'-q', str(query_interval),'-c', str(consec_failures),'-if', iface]
     print(cmd)
     return subprocess.Popen(cmd,stdout=subprocess.PIPE)
 
 def run_workload_simulation(controller_ip, controller_port,topology_type, topology_parameters):
     if topology_type == 'leaf-spine':
-        cmd = ['python3', 'workload.py', '-ip', controller_ip, '-p', controller_port,'-t',topology_type, '--num-leafs', f'{topology_parameters[0]}', '--num-spines', f'{topology_parameters[1]}']
+        cmd = ['python3', 'workload.py', '-ip', controller_ip, '-p', str(controller_port),'-t',topology_type, '--num-leafs', f'{topology_parameters[0]}', '--num-spines', f'{topology_parameters[1]}']
         print(cmd)
     elif topology_type == 'mesh':
-        cmd = ['python3', 'workload.py', '-ip', controller_ip, '-p', controller_port,'-t',topology_type, '--num-switches', f'{topology_parameters}']
+        cmd = ['python3', 'workload.py', '-ip', controller_ip, '-p', str(controller_port),'-t',topology_type, '--num-switches', f'{topology_parameters}']
         print(cmd)
     elif topology_type == '3-tier':
-        cmd = ['python3', 'workload.py', '-ip', controller_ip, '-p', controller_port,'-t',topology_type, '--num-cores', f'{topology_parameters[0]}', '--num-aggs', f'{topology_parameters[1]}', '--num-access', f'{topology_parameters[2]}']
+        cmd = ['python3', 'workload.py', '-ip', controller_ip, '-p', str(controller_port),'-t',topology_type, '--num-cores', f'{topology_parameters[0]}', '--num-aggs', f'{topology_parameters[1]}', '--num-access', f'{topology_parameters[2]}']
         print(cmd)
     return subprocess.Popen(cmd,stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 

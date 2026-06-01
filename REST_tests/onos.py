@@ -1,6 +1,6 @@
 import requests
 
-CONTROLLER_IP = '10.3.3.106'
+CONTROLLER_IP = '192.168.0.134'
 REST_PORT = '8181'
 
 url = f'http://{CONTROLLER_IP}:{REST_PORT}/onos/v1/topology'
