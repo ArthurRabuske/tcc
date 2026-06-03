@@ -1,0 +1,18 @@
+controller_ip: 192.168.0.134
+controller_port: 6653
+controller_name: onos
+rest_port: 8181
+iface: enp0s3
+topology: 3-tier
+num_cores: 2
+num_aggs: 4
+num_access: 8
+query_interval: 3
+consec_failures: 50
+consec_link_failures: 50
+start: 5
+trials: 3
+diff: 5
+maxsize: 20
+no_links: False
+[15, [3.032762050628662, 3.0260674953460693, 3.013361692428589], [2.9759860038757324, 1.7731053829193115, 1.395127773284912], [[37874.0, 151.0, 281442.0, 654.0], [42123.0, 158.0, 276015.0, 745.0], [40987.0, 149.0, 294219.0, 726.0]]]
