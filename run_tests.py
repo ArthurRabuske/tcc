@@ -23,10 +23,10 @@ CONTROLADORES = {
     },
     "odl": {
         "label":     "OpenDaylight",
-        "ip":        "192.168.0.135",  # ajuste para o IP da VM ODL
+        "ip":        "192.168.0.134",
         "name":      "odl",
         "rest_port": "8181",
-        "of_port":   "6653",
+        "of_port":   "6633",
         "cor":       "\033[1;33m",   # amarelo
     },
 }
@@ -38,6 +38,7 @@ R   = "\033[1;31m"
 G   = "\033[1;32m"
 Y   = "\033[1;33m"
 C   = "\033[1;36m"
+M   = "\033[1;35m"
 W   = "\033[1;37m"
 DIM = "\033[2m"
 RST = "\033[0m"
@@ -51,7 +52,7 @@ sdn_ativo = None
 def clear():
     os.system("clear")
 
-def banner(subtitulo=""):
+def banner():
     cfg = CONTROLADORES[sdn_ativo] if sdn_ativo else None
     cor = cfg["cor"] if cfg else C
     label = f"Controlador: {cfg['label']}  |  IP: {cfg['ip']}" if cfg else "Selecione um controlador"
@@ -61,8 +62,6 @@ def banner(subtitulo=""):
 ║        {label:<46}{cor}║
 ╚══════════════════════════════════════════════════════╝{RST}
 """)
-    if subtitulo:
-        print(f"  {Y}{subtitulo}{RST}\n")
 
 def titulo(texto):
     print(f"\n{Y}{'─'*54}")
@@ -94,11 +93,12 @@ def rodar(cmd, descricao):
     except FileNotFoundError:
         print(f"\n{R}✘ Erro: script não encontrado. Execute dentro da pasta tcc/{RST}")
 
-def base_flags(ip, name, rest, iface, q, c, s, tr, d, maxsize):
+def base_flags(ip, name, rest, of_port, iface, q, c, s, tr, d, maxsize):
     return [
         "-ip",  ip,
         "-n",   name,
         "-r",   rest,
+        "-p",   of_port,
         "-if",  iface,
         "-q",   str(q),
         "-c",   str(c),
@@ -117,6 +117,7 @@ def pedir_params_comuns():
     ip      = entrada("IP do controlador     ", cfg["ip"])
     name    = entrada("Nome do controlador   ", cfg["name"])
     rest    = entrada("Porta REST            ", cfg["rest_port"])
+    of_port = entrada("Porta OpenFlow        ", cfg["of_port"])
     iface   = entrada("Interface de rede     ", DEFAULT_IFACE)
     q       = entrada("Intervalo de consulta (-q) ", "3")
     c       = entrada("Falhas consecutivas   (-c) ", "50")
@@ -124,7 +125,7 @@ def pedir_params_comuns():
     d       = entrada("Incremento de tamanho (-d) ", "5")
     s       = entrada("Tamanho inicial       (-s) ", "5")
     maxsize = entrada("Tamanho máximo        (-max)", "20")
-    return ip, name, rest, iface, int(q), int(c), int(s), int(tr), int(d), int(maxsize)
+    return ip, name, rest, of_port, iface, int(q), int(c), int(s), int(tr), int(d), int(maxsize)
 
 # ─────────────────────────────────────────────
 #  TOPOLOGIAS
@@ -134,12 +135,12 @@ def teste_mesh():
     titulo("🔷  Topologia MESH")
     print(f"  {DIM}Todos os switches conectados entre si.{RST}\n")
 
-    ip, name, rest, iface, q, c, s, tr, d, maxsize = pedir_params_comuns()
+    ip, name, rest, of_port, iface, q, c, s, tr, d, maxsize = pedir_params_comuns()
     num_sw = entrada("Número de switches (--num-switches)", "10")
 
     cmd = ["sudo", "python3", "script_topology.py",
            "-t", "mesh", "--num-switches", num_sw,
-           ] + base_flags(ip, name, rest, iface, q, c, s, tr, d, maxsize)
+           ] + base_flags(ip, name, rest, of_port, iface, q, c, s, tr, d, maxsize)
 
     if confirmar("Iniciar teste MESH?"):
         rodar(cmd, "Benchmark MESH")
@@ -149,13 +150,13 @@ def teste_leaf_spine():
     titulo("🔶  Topologia LEAF-SPINE")
     print(f"  {DIM}Switches leaf conectados a spines centrais.{RST}\n")
 
-    ip, name, rest, iface, q, c, s, tr, d, maxsize = pedir_params_comuns()
+    ip, name, rest, of_port, iface, q, c, s, tr, d, maxsize = pedir_params_comuns()
     leafs  = entrada("Número de leafs  (--num-leafs) ", "4")
     spines = entrada("Número de spines (--num-spines)", "2")
 
     cmd = ["sudo", "python3", "script_topology.py",
            "-t", "leaf-spine", "--num-leafs", leafs, "--num-spines", spines,
-           ] + base_flags(ip, name, rest, iface, q, c, s, tr, d, maxsize)
+           ] + base_flags(ip, name, rest, of_port, iface, q, c, s, tr, d, maxsize)
 
     if confirmar("Iniciar teste LEAF-SPINE?"):
         rodar(cmd, "Benchmark LEAF-SPINE")
@@ -165,14 +166,14 @@ def teste_3tier():
     titulo("🔺  Topologia 3-TIER")
     print(f"  {DIM}Camadas: core → aggregation → access.{RST}\n")
 
-    ip, name, rest, iface, q, c, s, tr, d, maxsize = pedir_params_comuns()
+    ip, name, rest, of_port, iface, q, c, s, tr, d, maxsize = pedir_params_comuns()
     cores  = entrada("Número de cores  (--num-cores) ", "2")
     aggs   = entrada("Número de aggs   (--num-aggs)  ", "4")
     access = entrada("Número de access (--num-access)", "8")
 
     cmd = ["sudo", "python3", "script_topology.py",
            "-t", "3-tier", "--num-cores", cores, "--num-aggs", aggs, "--num-access", access,
-           ] + base_flags(ip, name, rest, iface, q, c, s, tr, d, maxsize)
+           ] + base_flags(ip, name, rest, of_port, iface, q, c, s, tr, d, maxsize)
 
     if confirmar("Iniciar teste 3-TIER?"):
         rodar(cmd, "Benchmark 3-TIER")
@@ -191,7 +192,6 @@ def menu_topologias():
     while True:
         clear()
         banner()
-        cfg = CONTROLADORES[sdn_ativo]
         print(f"  {W}Selecione a topologia:{RST}\n")
         for key, (label, _) in opcoes.items():
             cor = R if key == "0" else W
@@ -212,21 +212,31 @@ def menu_topologias():
             time.sleep(1)
 
 # ─────────────────────────────────────────────
+#  BENCHMARK COMPLETO (a implementar)
+# ─────────────────────────────────────────────
+def benchmark_completo():
+    clear()
+    print(f"""
+{M}╔══════════════════════════════════════════════════════╗
+║        BENCHMARK COMPLETO                            ║
+║        ONOS + OpenDaylight × Mesh, Leaf-Spine,       ║
+║        3-Tier                                        ║
+╚══════════════════════════════════════════════════════╝{RST}
+""")
+    print(f"  {Y}⚠  Funcionalidade em desenvolvimento.{RST}")
+    print(f"  {DIM}Esta opção irá rodar automaticamente todos os testes")
+    print(f"  para ambos os controladores e gerar um relatório")
+    print(f"  comparativo ao final.{RST}\n")
+    input(f"  {DIM}Enter para voltar...{RST}")
+
+# ─────────────────────────────────────────────
 #  MENU INICIAL — ESCOLHA DO CONTROLADOR
 # ─────────────────────────────────────────────
 def menu_controlador():
     global sdn_ativo
 
-    opcoes = {
-        "1": "onos",
-        "2": "odl",
-        "0": None,
-    }
-
     while True:
         clear()
-
-        # Banner sem controlador ativo ainda
         print(f"""
 {C}╔══════════════════════════════════════════════════════╗
 ║        SDN BENCHMARK — ONOS + MININET                ║
@@ -234,28 +244,30 @@ def menu_controlador():
 ╚══════════════════════════════════════════════════════╝{RST}
 """)
 
-        titulo("Qual controlador SDN deseja testar?")
+        titulo("O que deseja fazer?")
 
-        for key, val in opcoes.items():
-            if val is None:
-                print(f"  {R}[{key}]{RST}  🚪  Sair")
-            else:
-                cfg = CONTROLADORES[val]
-                cor = cfg["cor"]
-                print(f"  {cor}[{key}]{RST}  {cfg['label']}  {DIM}(IP padrão: {cfg['ip']}){RST}")
-
+        print(f"  {C}[1]{RST}  ONOS          {DIM}(IP padrão: {CONTROLADORES['onos']['ip']}, porta OF: {CONTROLADORES['onos']['of_port']}){RST}")
+        print(f"  {Y}[2]{RST}  OpenDaylight  {DIM}(IP padrão: {CONTROLADORES['odl']['ip']}, porta OF: {CONTROLADORES['odl']['of_port']}){RST}")
+        print(f"  {M}[3]{RST}  Benchmark Completo  {DIM}(em desenvolvimento){RST}")
+        print(f"  {R}[0]{RST}  🚪  Sair")
         print()
+
         escolha = input(f"  {Y}▶ Opção: {RST}").strip()
 
         if escolha == "0":
             clear()
             print(f"\n{G}  Até logo!{RST}\n")
             sys.exit(0)
-
-        if escolha in opcoes and opcoes[escolha] is not None:
-            sdn_ativo = opcoes[escolha]
+        elif escolha == "1":
+            sdn_ativo = "onos"
             menu_topologias()
-            sdn_ativo = None  # volta ao menu inicial ao retornar
+            sdn_ativo = None
+        elif escolha == "2":
+            sdn_ativo = "odl"
+            menu_topologias()
+            sdn_ativo = None
+        elif escolha == "3":
+            benchmark_completo()
         else:
             print(f"\n  {R}Opção inválida.{RST}")
             time.sleep(1)
