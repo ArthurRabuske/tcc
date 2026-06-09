@@ -239,16 +239,16 @@ def menu_controlador():
         clear()
         print(f"""
 {C}╔══════════════════════════════════════════════════════╗
-║        SDN BENCHMARK — ONOS + MININET                ║
+║              SDN BENCHMARK                           ║
 ║        Selecione o controlador SDN                   ║
 ╚══════════════════════════════════════════════════════╝{RST}
 """)
 
         titulo("O que deseja fazer?")
 
-        print(f"  {C}[1]{RST}  ONOS          {DIM}(IP padrão: {CONTROLADORES['onos']['ip']}, porta OF: {CONTROLADORES['onos']['of_port']}){RST}")
-        print(f"  {Y}[2]{RST}  OpenDaylight  {DIM}(IP padrão: {CONTROLADORES['odl']['ip']}, porta OF: {CONTROLADORES['odl']['of_port']}){RST}")
-        print(f"  {M}[3]{RST}  Benchmark Completo  {DIM}(em desenvolvimento){RST}")
+        print(f"  {C}[1]{RST}  Teste ONOS")
+        print(f"  {Y}[2]{RST}  Teste OpenDaylight")
+        print(f"  {M}[3]{RST}  Benchmark Onos x OpenDaylight  {DIM}(em desenvolvimento){RST}")
         print(f"  {R}[0]{RST}  🚪  Sair")
         print()
 
