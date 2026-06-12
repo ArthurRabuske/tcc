@@ -2,6 +2,7 @@ import requests
 import time
 from arguments_parser import parser
 from global_variables import *
+from output_utils import get_active_output_dir, link_length_path, topo_disc_path
 from scapy.all import *
 from scapy.contrib.openflow3 import OFPTPacketIn, OFPTPacketOut, OpenFlow3
 from scapy.contrib.lldp import LLDPDU
@@ -11,7 +12,8 @@ from scapy.contrib.lldp import LLDPDU
 
 
 def get_target_link():
-    with open('output/link_length.txt','r') as f:
+    out_dir = get_active_output_dir()
+    with open(link_length_path(out_dir), 'r') as f:
         lines = f.readlines()
         value = int(lines[-1].strip())
     return value
@@ -156,14 +158,14 @@ def RFC8456_net_topology_discovery_time(len_topology,controller,ctrl_ip, rest_po
                     consec_link_failures +=1
                     if consec_link_failures >= args.consec_link_failures:
                         topology_match = False
-                        with open('output/topo_disc_'+controller+'.txt', 'a') as f:
+                        with open(topo_disc_path(get_active_output_dir()), 'a') as f:
                             f.write(f"{args.consec_failures * args.query_interval},{args.consec_failures * args.query_interval},{total_lldp},{count_lldp},{total_packets},{count_packets}\n")
                         break
         else:
             consecutive_failures += 1
             if consecutive_failures >= args.consec_failures:
                 fail = True
-                with open('output/topo_disc_'+controller+'.txt', 'a') as f:
+                with open(topo_disc_path(get_active_output_dir()), 'a') as f:
                     f.write(f"{args.consec_failures * args.query_interval},{args.consec_failures * args.query_interval},{total_lldp},{count_lldp},{total_packets},{count_packets}\n")
                 break
 
@@ -184,7 +186,7 @@ def RFC8456_net_topology_discovery_time(len_topology,controller,ctrl_ip, rest_po
         print('Avg_Memory: ',avg_memory)
         print('total packets: ',total_packets)
         topology_discovery_time = calculate_topology_discovery_time(start_time, end_time)
-        with open('output/topo_disc_'+controller+'.txt', 'a') as f:
+        with open(topo_disc_path(get_active_output_dir()), 'a') as f:
             if args.no_links:
                 f.write(f"{topology_discovery_time},{topology_discovery_time},{total_lldp},{count_lldp},{total_packets},{count_packets},{avg_cpu},{avg_memory}\n")
             else:
@@ -195,7 +197,8 @@ if __name__ == '__main__':
     # Parse the command line arguments
     args = parser('topology')
 
-    with open('output/topo_disc_'+args.controller_name+'.txt', 'w') as f:
+    out_dir = get_active_output_dir()
+    with open(topo_disc_path(out_dir), 'w') as f:
         pass
 
     RFC8456_net_topology_discovery_time(args.target_length,

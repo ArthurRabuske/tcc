@@ -6,6 +6,7 @@ from scapy.all import *
 from scapy.contrib.openflow3 import OFPTPacketIn, OFPTPacketOut, OpenFlow3
 from scapy.contrib.lldp import LLDPDU
 from setup_dhcp import setup
+from output_utils import get_active_output_dir, link_length_path
 from mininet.cli import CLI
 from mininet.util import pmonitor
 
@@ -14,7 +15,7 @@ from mininet.util import pmonitor
 
 
 def get_target_link():
-    with open('output/link_length.txt','r') as f:
+    with open(link_length_path(get_active_output_dir()), 'r') as f:
         lines = f.readlines()
         value = int(lines[-1].strip())
     return value

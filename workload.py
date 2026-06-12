@@ -4,6 +4,7 @@ from mininet.cli import CLI
 from mininet.net import Mininet
 from mininet.node import OVSSwitch, RemoteController
 from arguments_parser import parser
+from output_utils import get_active_output_dir, link_length_path
 
 from mininet.node import Host
 from host_links_onoff import on_off_link, on_off_hosts
@@ -153,7 +154,7 @@ if __name__ == '__main__':
 
     net.start()
 
-    with open('output/link_length.txt','w') as f:
+    with open(link_length_path(get_active_output_dir()), 'w') as f:
         f.write(f'{len(net.links)-(len(client_links)+len(server_links))}')
     
     if not args.links and not args.hosts:

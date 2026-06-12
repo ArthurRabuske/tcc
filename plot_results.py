@@ -17,6 +17,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
+from output_utils import (
+    CSV_NAME,
+    LEGACY_OUTPUT_DIR,
+    discover_test_dirs,
+    label_from_dir,
+)
+
 
 def _safe_float(v: str) -> Optional[float]:
     try:
@@ -95,8 +102,9 @@ def read_average_csv(path: Path) -> Series:
     )
 
 
-def infer_title_from_filename(csv_path: Path) -> str:
-    # Ex.: onos_mesh_average_topology_discovery_time.csv -> "onos / mesh"
+def infer_title_from_path(csv_path: Path) -> str:
+    if csv_path.name == CSV_NAME:
+        return label_from_dir(csv_path.parent)
     name = csv_path.name.replace("_average_topology_discovery_time.csv", "")
     parts = name.split("_")
     if len(parts) >= 2:
@@ -104,7 +112,7 @@ def infer_title_from_filename(csv_path: Path) -> str:
     return name
 
 
-def plot_csv(csv_path: Path, outdir: Path) -> List[Path]:
+def plot_csv(csv_path: Path, outdir: Optional[Path] = None, file_prefix: str = "plot") -> List[Path]:
     # Import local (evita falhar ao importar matplotlib em ambientes sem)
     import matplotlib
 
@@ -112,14 +120,15 @@ def plot_csv(csv_path: Path, outdir: Path) -> List[Path]:
     import matplotlib.pyplot as plt
 
     series = read_average_csv(csv_path)
-    title = infer_title_from_filename(csv_path)
-    prefix = csv_path.name.replace(".csv", "")
+    title = infer_title_from_path(csv_path)
+    if outdir is None:
+        outdir = csv_path.parent
     outdir.mkdir(parents=True, exist_ok=True)
 
     written: List[Path] = []
 
     def save(fig, suffix: str) -> None:
-        p = outdir / f"{prefix}_{suffix}.png"
+        p = outdir / f"{file_prefix}_{suffix}.png"
         fig.tight_layout()
         fig.savefig(p, dpi=160)
         plt.close(fig)
@@ -211,38 +220,64 @@ def plot_csv(csv_path: Path, outdir: Path) -> List[Path]:
     return written
 
 
+def find_csv_files(base: Path) -> List[Path]:
+    found: List[Path] = []
+    for d in discover_test_dirs(base):
+        csv_file = d / CSV_NAME
+        if csv_file.exists():
+            found.append(csv_file)
+    legacy = base / LEGACY_OUTPUT_DIR
+    if legacy.is_dir():
+        found.extend(sorted(legacy.glob("*_average_topology_discovery_time.csv")))
+    return found
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Gerar gráficos a partir dos CSVs de output/ do SDN-BM.")
+    parser = argparse.ArgumentParser(description="Gerar gráficos a partir dos CSVs do SDN-BM.")
     parser.add_argument(
         "--input",
-        help="CSV específico (ex.: output/onos_mesh_average_topology_discovery_time.csv). Se omitido, processa todos em output/.",
+        help="CSV ou pasta de teste (ex.: output-onos-mesh). Se omitido, processa todas as pastas output-* e legado output/.",
         default=None,
     )
     parser.add_argument(
         "--outdir",
-        help="Diretório de saída para PNGs.",
-        default="output/plots",
+        help="Diretório de saída para PNGs. Padrão: mesma pasta do CSV.",
+        default=None,
     )
     args = parser.parse_args()
 
     base = Path(__file__).resolve().parent
-    outdir = (base / args.outdir).resolve() if not os.path.isabs(args.outdir) else Path(args.outdir)
 
     if args.input:
-        inputs = [Path(args.input)]
+        input_path = Path(args.input)
+        if not input_path.is_absolute():
+            input_path = base / input_path
+        if input_path.is_dir():
+            inputs = [input_path / CSV_NAME] if (input_path / CSV_NAME).exists() else []
+        else:
+            inputs = [input_path]
     else:
-        inputs = sorted((base / "output").glob("*_average_topology_discovery_time.csv"))
+        inputs = find_csv_files(base)
 
     if not inputs:
-        raise SystemExit("Nenhum CSV encontrado em output/*_average_topology_discovery_time.csv")
+        raise SystemExit("Nenhum CSV encontrado. Rode um teste ou informe --input.")
 
     all_written: List[Path] = []
-    for p in inputs:
-        csv_path = p if p.is_absolute() else (base / p)
-        written = plot_csv(csv_path, outdir)
+    for csv_path in inputs:
+        if not csv_path.exists():
+            continue
+        outdir = None
+        if args.outdir:
+            outdir = Path(args.outdir)
+            if not outdir.is_absolute():
+                outdir = base / outdir
+        written = plot_csv(csv_path, outdir=outdir)
         all_written.extend(written)
 
-    print(f"OK: {len(all_written)} gráfico(s) gerado(s) em: {outdir}")
+    if not all_written:
+        raise SystemExit("Nenhum gráfico gerado.")
+
+    print(f"OK: {len(all_written)} gráfico(s) gerado(s)")
     return 0
 
 

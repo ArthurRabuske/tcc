@@ -8,6 +8,10 @@ import subprocess
 import os
 import sys
 import time
+from pathlib import Path
+
+from output_utils import CSV_NAME, discover_test_dirs, parse_test_dir_name
+from plot_benchmark import run_benchmark_plots
 
 # ─────────────────────────────────────────────
 #  CONFIGURAÇÕES POR CONTROLADOR
@@ -79,19 +83,22 @@ def confirmar(msg):
 # ─────────────────────────────────────────────
 #  RODAR COMANDO
 # ─────────────────────────────────────────────
-def rodar(cmd, descricao):
+def rodar(cmd, descricao, env=None):
     print(f"\n{G}▶ Executando: {descricao}{RST}")
     print(f"{DIM}  {' '.join(cmd)}{RST}\n")
     try:
-        proc = subprocess.run(cmd, check=False)
+        proc = subprocess.run(cmd, check=False, env=env)
         if proc.returncode == 0:
             print(f"\n{G}✔ Concluído com sucesso!{RST}")
         else:
             print(f"\n{R}✘ Processo encerrado (código {proc.returncode}){RST}")
+        return proc.returncode == 0
     except KeyboardInterrupt:
         print(f"\n{Y}⚠ Interrompido pelo usuário.{RST}")
+        return False
     except FileNotFoundError:
         print(f"\n{R}✘ Erro: script não encontrado. Execute dentro da pasta tcc/{RST}")
+        return False
 
 def base_flags(ip, name, rest, of_port, iface, q, c, s, tr, d, maxsize):
     return [
@@ -212,22 +219,61 @@ def menu_topologias():
             time.sleep(1)
 
 # ─────────────────────────────────────────────
-#  BENCHMARK COMPLETO (a implementar)
+#  BENCHMARK COMPARATIVO
 # ─────────────────────────────────────────────
+def listar_pastas_teste():
+    base = Path.cwd()
+    pastas = discover_test_dirs(base)
+    if not pastas:
+        print(f"\n  {Y}Nenhuma pasta output-<controlador>-<topologia> encontrada.{RST}")
+        print(f"  {DIM}Rode testes individuais antes (opções 1 ou 2).{RST}")
+        return []
+
+    print(f"\n  {W}Pastas de teste encontradas:{RST}\n")
+    for p in pastas:
+        ctrl, topo = parse_test_dir_name(p.name)
+        csv_ok = "✔" if (p / CSV_NAME).exists() else "✘"
+        print(f"  {csv_ok}  {p.name}  {DIM}({ctrl} / {topo}){RST}")
+    return pastas
+
+
 def benchmark_completo():
     clear()
     print(f"""
 {M}╔══════════════════════════════════════════════════════╗
-║        BENCHMARK COMPLETO                            ║
-║        ONOS + OpenDaylight × Mesh, Leaf-Spine,       ║
-║        3-Tier                                        ║
+║        BENCHMARK COMPARATIVO                         ║
+║        Compara resultados por topologia              ║
 ╚══════════════════════════════════════════════════════╝{RST}
 """)
-    print(f"  {Y}⚠  Funcionalidade em desenvolvimento.{RST}")
-    print(f"  {DIM}Esta opção irá rodar automaticamente todos os testes")
-    print(f"  para ambos os controladores e gerar um relatório")
-    print(f"  comparativo ao final.{RST}\n")
-    input(f"  {DIM}Enter para voltar...{RST}")
+
+    pastas = listar_pastas_teste()
+    if not pastas:
+        input(f"\n  {DIM}Enter para voltar...{RST}")
+        return
+
+    print(f"""
+  {DIM}Esta opção lê os CSVs das pastas output-<controlador>-<topologia>
+  e gera gráficos comparativos em output-benchmarking/
+  (ex.: ONOS vs OpenDaylight na mesma topologia mesh).{RST}
+""")
+
+    if not confirmar("Gerar gráficos comparativos?"):
+        return
+
+    try:
+        written = run_benchmark_plots(Path.cwd())
+        if not written:
+            print(f"\n  {Y}Nenhum comparativo gerado.{RST}")
+            print(f"  {DIM}É necessário ter pelo menos 2 controladores testados")
+            print(f"  na mesma topologia (ex.: output-onos-mesh e output-odl-mesh).{RST}")
+        else:
+            print(f"\n  {G}✔ {len(written)} gráfico(s) comparativo(s) em output-benchmarking/{RST}")
+            for p in written:
+                print(f"    • {p.name}")
+    except Exception as exc:
+        print(f"\n  {R}Erro ao gerar comparativos: {exc}{RST}")
+
+    input(f"\n  {DIM}Enter para voltar...{RST}")
 
 # ─────────────────────────────────────────────
 #  MENU INICIAL — ESCOLHA DO CONTROLADOR
@@ -248,7 +294,7 @@ def menu_controlador():
 
         print(f"  {C}[1]{RST}  Teste ONOS")
         print(f"  {Y}[2]{RST}  Teste OpenDaylight")
-        print(f"  {M}[3]{RST}  Benchmark Onos x OpenDaylight  {DIM}(em desenvolvimento){RST}")
+        print(f"  {M}[3]{RST}  Benchmark comparativo (ONOS × OpenDaylight)")
         print(f"  {R}[0]{RST}  🚪  Sair")
         print()
 
