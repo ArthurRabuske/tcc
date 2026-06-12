@@ -1,34 +1,24 @@
 #!/usr/bin/env python3
-"""Gera gráficos comparativos a partir das pastas output-<controlador>-<topologia>."""
+"""Gera gráficos comparativos a partir das pastas output-<controlador>-<topologia>/."""
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
-from output_utils import BENCHMARK_DIR_NAME, CSV_NAME, discover_test_dirs, parse_test_dir_name
+from output_utils import (
+    CSV_NAME,
+    controller_from_run_dir,
+    create_benchmark_run_dir,
+    discover_controller_runs_for_topology,
+)
 from plot_results import Series, read_average_csv
-
-
-def _group_by_topology(test_dirs: List[Path]) -> Dict[str, List[Path]]:
-    grouped: Dict[str, List[Path]] = {}
-    for d in test_dirs:
-        ctrl, topo = parse_test_dir_name(d.name)
-        if not topo:
-            continue
-        grouped.setdefault(topo, []).append(d)
-    return grouped
-
-
-def _controller_label(test_dir: Path) -> str:
-    ctrl, _ = parse_test_dir_name(test_dir.name)
-    return (ctrl or test_dir.name).upper()
 
 
 def plot_topology_comparison(
     topology: str,
-    test_dirs: List[Path],
+    run_dirs: List[Path],
     outdir: Path,
 ) -> List[Path]:
     import matplotlib
@@ -37,11 +27,12 @@ def plot_topology_comparison(
     import matplotlib.pyplot as plt
 
     series_list: List[Tuple[str, Series]] = []
-    for d in sorted(test_dirs, key=lambda p: p.name):
-        csv_file = d / CSV_NAME
+    for run_dir in sorted(run_dirs, key=lambda p: p.parent.name):
+        csv_file = run_dir / CSV_NAME
         if not csv_file.exists():
             continue
-        series_list.append((_controller_label(d), read_average_csv(csv_file)))
+        label = controller_from_run_dir(run_dir)
+        series_list.append((label, read_average_csv(csv_file)))
 
     if len(series_list) < 2:
         return []
@@ -57,7 +48,6 @@ def plot_topology_comparison(
         plt.close(fig)
         written.append(path)
 
-    # Tempo total
     fig, ax = plt.subplots(figsize=(10, 5))
     for i, (label, s) in enumerate(series_list):
         ax.plot(s.x, s.total, marker="o", label=f"{label} — avg_total", color=colors[i % len(colors)])
@@ -66,9 +56,8 @@ def plot_topology_comparison(
     ax.set_ylabel("Tempo (s)")
     ax.grid(True, alpha=0.25)
     ax.legend()
-    save(fig, f"compare_{topology}_avg_total.png")
+    save(fig, "compare_avg_total.png")
 
-    # TDT e LDT
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
     for i, (label, s) in enumerate(series_list):
         c = colors[i % len(colors)]
@@ -82,9 +71,8 @@ def plot_topology_comparison(
         ax.grid(True, alpha=0.25)
         ax.legend()
     fig.suptitle(f"Comparativo TDT/LDT — {topology}", y=1.02)
-    save(fig, f"compare_{topology}_tdt_ldt.png")
+    save(fig, "compare_tdt_ldt.png")
 
-    # CPU e memória
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
     for i, (label, s) in enumerate(series_list):
         c = colors[i % len(colors)]
@@ -98,9 +86,8 @@ def plot_topology_comparison(
         ax.grid(True, alpha=0.25)
         ax.legend()
     fig.suptitle(f"Comparativo CPU/Mem — {topology}", y=1.02)
-    save(fig, f"compare_{topology}_cpu_mem.png")
+    save(fig, "compare_cpu_mem.png")
 
-    # Resumo consolidado
     fig, axs = plt.subplots(2, 2, figsize=(12, 8))
     metrics = [
         (axs[0, 0], "total", "avg_total (s)"),
@@ -116,39 +103,41 @@ def plot_topology_comparison(
         ax.grid(True, alpha=0.25)
         ax.legend(fontsize=8)
     fig.suptitle(f"Resumo comparativo — {topology}", y=1.02)
-    save(fig, f"compare_{topology}_summary.png")
+    save(fig, "compare_summary.png")
 
     return written
 
 
-def run_benchmark_plots(base: Optional[Path] = None, outdir: Optional[Path] = None) -> List[Path]:
+def run_benchmark_for_topology(
+    topology: str,
+    base: Optional[Path] = None,
+) -> Tuple[List[Path], Optional[Path]]:
     root = base or Path.cwd()
-    benchmark_dir = outdir or (root / BENCHMARK_DIR_NAME)
-    test_dirs = discover_test_dirs(root)
-    grouped = _group_by_topology(test_dirs)
+    run_dirs = discover_controller_runs_for_topology(topology, root)
+    if len(run_dirs) < 2:
+        return [], None
 
-    all_written: List[Path] = []
-    for topo, dirs in sorted(grouped.items()):
-        if len(dirs) < 2:
-            continue
-        written = plot_topology_comparison(topo, dirs, benchmark_dir)
-        all_written.extend(written)
-    return all_written
+    outdir = create_benchmark_run_dir(topology, root)
+    written = plot_topology_comparison(topology, run_dirs, outdir)
+    return written, outdir
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Gerar gráficos comparativos ONOS x ODL por topologia.")
-    parser.add_argument("--outdir", default=BENCHMARK_DIR_NAME, help="Pasta de saída dos comparativos.")
+    parser.add_argument(
+        "-t", "--topology",
+        required=True,
+        choices=["mesh", "leaf-spine", "3-tier"],
+        help="Topologia a comparar.",
+    )
     args = parser.parse_args()
 
-    base = Path.cwd()
-    outdir = Path(args.outdir)
-    if not outdir.is_absolute():
-        outdir = base / outdir
-
-    written = run_benchmark_plots(base, outdir)
-    if not written:
-        print("Nenhum comparativo gerado. É necessário ter pelo menos 2 pastas output-<ctrl>-<topo> com CSV para a mesma topologia.")
+    written, outdir = run_benchmark_for_topology(args.topology, Path.cwd())
+    if not written or outdir is None:
+        print(
+            f"Nenhum comparativo gerado para '{args.topology}'. "
+            "É necessário ter pelo menos 2 controladores testados nessa topologia."
+        )
         return 1
 
     print(f"OK: {len(written)} gráfico(s) comparativo(s) em: {outdir}")

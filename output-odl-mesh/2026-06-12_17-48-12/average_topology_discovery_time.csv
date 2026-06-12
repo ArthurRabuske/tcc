@@ -1,0 +1,2 @@
+num_nodes,avg_tdt,avg_ldt,avg_total,avg_lldp_len,avg_pkt_len,avg_lldp_count,avg_pkt_count,avg_cpu,avg_memory
+5,2,2,4,2,2,2,2,2,2

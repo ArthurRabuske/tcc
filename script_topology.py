@@ -6,9 +6,9 @@ from pathlib import Path
 from email_sender import send_email_with_attachment
 from arguments_parser import parser
 from output_utils import (
+    CSV_NAME,
+    create_run_dir,
     csv_path,
-    ensure_output_dir,
-    get_output_dir,
     report_path,
     topo_disc_path,
 )
@@ -80,7 +80,7 @@ def generate_plots(output_dir: Path):
 
 if __name__ == '__main__':
     args = parser('topology-script')
-    output_dir = ensure_output_dir(get_output_dir(args.controller_name, args.topology))
+    output_dir = create_run_dir(args.controller_name, args.topology)
     avg_file = csv_path(output_dir)
     report_file = report_path(output_dir)
     topo_disc_file = topo_disc_path(output_dir)

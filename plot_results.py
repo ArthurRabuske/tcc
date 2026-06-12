@@ -17,12 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-from output_utils import (
-    CSV_NAME,
-    LEGACY_OUTPUT_DIR,
-    discover_test_dirs,
-    label_from_dir,
-)
+from output_utils import CSV_NAME, find_all_csv_files, label_from_dir, list_runs_with_csv
 
 
 def _safe_float(v: str) -> Optional[float]:
@@ -220,16 +215,17 @@ def plot_csv(csv_path: Path, outdir: Optional[Path] = None, file_prefix: str = "
     return written
 
 
+def resolve_input_csvs(input_path: Path) -> List[Path]:
+    if input_path.is_file():
+        return [input_path]
+    if (input_path / CSV_NAME).exists():
+        return [input_path / CSV_NAME]
+    runs = list_runs_with_csv(input_path)
+    return [run / CSV_NAME for run in runs]
+
+
 def find_csv_files(base: Path) -> List[Path]:
-    found: List[Path] = []
-    for d in discover_test_dirs(base):
-        csv_file = d / CSV_NAME
-        if csv_file.exists():
-            found.append(csv_file)
-    legacy = base / LEGACY_OUTPUT_DIR
-    if legacy.is_dir():
-        found.extend(sorted(legacy.glob("*_average_topology_discovery_time.csv")))
-    return found
+    return find_all_csv_files(base)
 
 
 def main() -> int:
@@ -252,10 +248,7 @@ def main() -> int:
         input_path = Path(args.input)
         if not input_path.is_absolute():
             input_path = base / input_path
-        if input_path.is_dir():
-            inputs = [input_path / CSV_NAME] if (input_path / CSV_NAME).exists() else []
-        else:
-            inputs = [input_path]
+        inputs = resolve_input_csvs(input_path)
     else:
         inputs = find_csv_files(base)
 

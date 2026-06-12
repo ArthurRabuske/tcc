@@ -10,8 +10,17 @@ import sys
 import time
 from pathlib import Path
 
-from output_utils import CSV_NAME, discover_test_dirs, parse_test_dir_name
-from plot_benchmark import run_benchmark_plots
+from output_utils import (
+    CSV_NAME,
+    controller_from_run_dir,
+    discover_controller_runs_for_topology,
+    discover_test_base_dirs,
+    get_latest_run_with_csv,
+    label_from_dir,
+    list_runs_with_csv,
+    parse_test_dir_name,
+)
+from plot_benchmark import run_benchmark_for_topology
 
 # ─────────────────────────────────────────────
 #  CONFIGURAÇÕES POR CONTROLADOR
@@ -219,61 +228,100 @@ def menu_topologias():
             time.sleep(1)
 
 # ─────────────────────────────────────────────
-#  BENCHMARK COMPARATIVO
+#  BENCHMARK COMPARATIVO POR TOPOLOGIA
 # ─────────────────────────────────────────────
-def listar_pastas_teste():
+TOPOLOGIAS_BENCH = {
+    "1": ("Mesh", "mesh"),
+    "2": ("Leaf-Spine", "leaf-spine"),
+    "3": ("3-Tier", "3-tier"),
+}
+
+
+def listar_execucoes_topologia(topology: str):
     base = Path.cwd()
-    pastas = discover_test_dirs(base)
-    if not pastas:
-        print(f"\n  {Y}Nenhuma pasta output-<controlador>-<topologia> encontrada.{RST}")
+    run_dirs = discover_controller_runs_for_topology(topology, base)
+    if not run_dirs:
+        print(f"\n  {Y}Nenhuma execução encontrada para topologia '{topology}'.{RST}")
         print(f"  {DIM}Rode testes individuais antes (opções 1 ou 2).{RST}")
         return []
 
-    print(f"\n  {W}Pastas de teste encontradas:{RST}\n")
-    for p in pastas:
-        ctrl, topo = parse_test_dir_name(p.name)
-        csv_ok = "✔" if (p / CSV_NAME).exists() else "✘"
-        print(f"  {csv_ok}  {p.name}  {DIM}({ctrl} / {topo}){RST}")
-    return pastas
+    print(f"\n  {W}Execuções usadas no comparativo ({topology}):{RST}\n")
+    for run_dir in run_dirs:
+        ctrl = controller_from_run_dir(run_dir)
+        print(f"  ✔  {ctrl:<12}  {run_dir.parent.name}/{run_dir.name}")
+    return run_dirs
 
 
-def benchmark_completo():
+def executar_benchmark_topologia(topology: str, label: str):
     clear()
     print(f"""
 {M}╔══════════════════════════════════════════════════════╗
-║        BENCHMARK COMPARATIVO                         ║
-║        Compara resultados por topologia              ║
+║        BENCHMARK — {label:<36}║
 ╚══════════════════════════════════════════════════════╝{RST}
 """)
 
-    pastas = listar_pastas_teste()
-    if not pastas:
+    run_dirs = listar_execucoes_topologia(topology)
+    if len(run_dirs) < 2:
+        print(f"\n  {Y}São necessários testes de pelo menos 2 controladores.{RST}")
+        print(f"  {DIM}Ex.: output-onos-{topology}/ e output-odl-{topology}/{RST}")
         input(f"\n  {DIM}Enter para voltar...{RST}")
         return
 
     print(f"""
-  {DIM}Esta opção lê os CSVs das pastas output-<controlador>-<topologia>
-  e gera gráficos comparativos em output-benchmarking/
-  (ex.: ONOS vs OpenDaylight na mesma topologia mesh).{RST}
+  {DIM}Será criada uma nova pasta em output-benchmarking-{topology}/<timestamp>/
+  com gráficos comparando os controladores nesta topologia.{RST}
 """)
 
-    if not confirmar("Gerar gráficos comparativos?"):
+    if not confirmar(f"Gerar benchmark comparativo — {label}?"):
         return
 
     try:
-        written = run_benchmark_plots(Path.cwd())
-        if not written:
+        written, outdir = run_benchmark_for_topology(topology, Path.cwd())
+        if not written or outdir is None:
             print(f"\n  {Y}Nenhum comparativo gerado.{RST}")
-            print(f"  {DIM}É necessário ter pelo menos 2 controladores testados")
-            print(f"  na mesma topologia (ex.: output-onos-mesh e output-odl-mesh).{RST}")
         else:
-            print(f"\n  {G}✔ {len(written)} gráfico(s) comparativo(s) em output-benchmarking/{RST}")
+            print(f"\n  {G}✔ Resultado salvo em: {outdir}{RST}")
             for p in written:
                 print(f"    • {p.name}")
     except Exception as exc:
         print(f"\n  {R}Erro ao gerar comparativos: {exc}{RST}")
 
     input(f"\n  {DIM}Enter para voltar...{RST}")
+
+
+def menu_benchmarking():
+    opcoes = {
+        "1": ("🔷  Benchmark — Mesh", "mesh"),
+        "2": ("🔶  Benchmark — Leaf-Spine", "leaf-spine"),
+        "3": ("🔺  Benchmark — 3-Tier", "3-tier"),
+        "0": ("↩  Voltar", None),
+    }
+
+    while True:
+        clear()
+        print(f"""
+{M}╔══════════════════════════════════════════════════════╗
+║        BENCHMARKING COMPARATIVO                      ║
+║        Escolha a topologia                           ║
+╚══════════════════════════════════════════════════════╝{RST}
+""")
+        print(f"  {DIM}Cada execução gera pasta em output-benchmarking-<topo>/<timestamp>/{RST}\n")
+
+        for key, (label, _) in opcoes.items():
+            cor = R if key == "0" else W
+            print(f"  {cor}[{key}]{RST}  {label}")
+        print()
+
+        escolha = input(f"  {Y}▶ Opção: {RST}").strip()
+        if escolha == "0":
+            return
+        if escolha in opcoes:
+            label, topo = opcoes[escolha]
+            if topo:
+                executar_benchmark_topologia(topo, label.replace("  ", " ").strip())
+        else:
+            print(f"\n  {R}Opção inválida.{RST}")
+            time.sleep(1)
 
 # ─────────────────────────────────────────────
 #  MENU INICIAL — ESCOLHA DO CONTROLADOR
@@ -313,7 +361,7 @@ def menu_controlador():
             menu_topologias()
             sdn_ativo = None
         elif escolha == "3":
-            benchmark_completo()
+            menu_benchmarking()
         else:
             print(f"\n  {R}Opção inválida.{RST}")
             time.sleep(1)

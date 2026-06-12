@@ -249,7 +249,7 @@ Para cada topologia, o menu solicita os parâmetros do experimento (IP, portas, 
 6.                  Aguardar conclusão
 7.                  Ver resultados em output-<controlador>-<topologia>/
 8.                  (gráficos gerados automaticamente ao final do teste)
-9.                  Opção [3] → comparar ONOS × ODL em output-benchmarking/
+9.                  Opção [3] → Benchmarking → escolher topologia
 ```
 
 #### O que o `run_tests.py` executa por baixo dos panos
@@ -419,53 +419,66 @@ output-odl-3-tier/
 
 1. Rode os mesmos parâmetros para ONOS e ODL (mesma topologia, `-s`, `-tr`, `-d`, `-max`)
 2. No `run_tests.py`, escolha **[3] Benchmark comparativo**
-3. Os gráficos comparativos são gerados em `output-benchmarking/`
+3. Os gráficos comparativos são gerados em `output-benchmarking-<topologia>/<timestamp>/`
 
 Ou via linha de comando:
 
 ```bash
-python3 plot_benchmark.py
+python3 plot_benchmark.py -t mesh
+python3 plot_benchmark.py -t leaf-spine
+python3 plot_benchmark.py -t 3-tier
 ```
 
 ---
 
 ## Onde ficam os resultados
 
-Cada teste gera uma **pasta própria** com nome `output-<controlador>-<topologia>`:
+Cada **execução** de teste cria uma subpasta com timestamp, sem sobrescrever execuções anteriores:
 
 ```
 output-onos-mesh/
-├── average_topology_discovery_time.csv
-├── topology_discovery_time_report.txt
-├── topo_disc.txt
-├── link_length.txt
-├── plot_times.png
-├── plot_cpu_mem.png
-├── plot_traffic_bytes.png
-├── plot_traffic_count.png
-└── plot_summary.png
+├── 2026-06-09_19-15-30/
+│   ├── average_topology_discovery_time.csv
+│   ├── topology_discovery_time_report.txt
+│   ├── topo_disc.txt
+│   ├── link_length.txt
+│   ├── plot_times.png
+│   ├── plot_cpu_mem.png
+│   └── plot_summary.png
+└── 2026-06-10_10-00-00/          ← nova execução, pasta separada
+    └── ...
+```
+
+Cada **benchmarking comparativo** também cria pasta com timestamp:
+
+```
+output-benchmarking-mesh/
+├── 2026-06-09_20-00-00/
+│   ├── compare_avg_total.png
+│   ├── compare_tdt_ldt.png
+│   ├── compare_cpu_mem.png
+│   └── compare_summary.png
+└── 2026-06-10_11-00-00/
+    └── ...
 ```
 
 | Pasta / arquivo | Conteúdo |
 |---|---|
-| `output-<ctrl>-<topo>/` | Resultados completos de um teste (CSV, relatório, gráficos) |
+| `output-<ctrl>-<topo>/<timestamp>/` | Resultados de uma execução individual |
+| `output-benchmarking-<topo>/<timestamp>/` | Gráficos comparativos ONOS × ODL |
 | `average_topology_discovery_time.csv` | Médias por tamanho de topologia |
-| `topology_discovery_time_report.txt` | Parâmetros do teste + dados brutos por trial |
-| `topo_disc.txt` | Resultado bruto da última execução de descoberta |
-| `link_length.txt` | Número de links da última topologia criada |
+| `topology_discovery_time_report.txt` | Parâmetros + dados brutos por trial |
 | `plot_*.png` | Gráficos gerados automaticamente ao final do teste |
-| `output-benchmarking/` | Gráficos comparativos ONOS × ODL por topologia |
+| `compare_*.png` | Gráficos comparativos do benchmarking |
 
-### Exemplos de pastas geradas
+### Exemplos de estrutura
 
 ```
-output-onos-mesh/
-output-onos-leaf-spine/
-output-onos-3-tier/
-output-odl-mesh/
-output-odl-leaf-spine/
-output-odl-3-tier/
-output-benchmarking/
+output-onos-mesh/2026-06-09_19-15-30/
+output-onos-leaf-spine/2026-06-09_19-30-00/
+output-odl-mesh/2026-06-09_20-00-00/
+output-benchmarking-mesh/2026-06-09_21-00-00/
+output-benchmarking-leaf-spine/2026-06-09_21-15-00/
 ```
 
 ### Colunas do CSV
@@ -496,31 +509,34 @@ python3 plot_results.py --input output-onos-mesh
 
 ### Gráficos comparativos (ONOS × ODL)
 
-Depois de rodar testes para ambos os controladores na mesma topologia:
-
-**Via menu:**
+No menu:
 
 ```bash
 sudo python3 run_tests.py
-# Escolha [3] Benchmark comparativo
+# [3] Benchmark comparativo
+#   [1] Mesh
+#   [2] Leaf-Spine
+#   [3] 3-Tier
 ```
 
-**Via linha de comando:**
+Ou via linha de comando:
 
 ```bash
-python3 plot_benchmark.py
+python3 plot_benchmark.py -t mesh
+python3 plot_benchmark.py -t leaf-spine
+python3 plot_benchmark.py -t 3-tier
 ```
 
-Os comparativos são salvos em `output-benchmarking/`:
+Cada execução cria uma nova pasta em `output-benchmarking-<topo>/<timestamp>/`:
 
 | Arquivo PNG | Conteúdo |
 |---|---|
-| `compare_<topo>_avg_total.png` | Tempo total de descoberta — todos os controladores |
-| `compare_<topo>_tdt_ldt.png` | TDT e LDT lado a lado |
-| `compare_<topo>_cpu_mem.png` | CPU e memória comparados |
-| `compare_<topo>_summary.png` | Resumo consolidado |
+| `compare_avg_total.png` | Tempo total de descoberta — todos os controladores |
+| `compare_tdt_ldt.png` | TDT e LDT lado a lado |
+| `compare_cpu_mem.png` | CPU e memória comparados |
+| `compare_summary.png` | Resumo consolidado |
 
-> Requisito: pelo menos **2 pastas** com a mesma topologia (ex.: `output-onos-mesh` e `output-odl-mesh`).
+> Requisito: pelo menos **2 controladores** testados na mesma topologia (ex.: `output-onos-mesh/` e `output-odl-mesh/`). O benchmark usa a **execução mais recente** de cada controlador.
 
 ### Instalar dependência
 
@@ -556,7 +572,7 @@ python3 plot_results.py
 | **`run_tests.py`** | **Interface interativa principal.** Menu ONOS/ODL, topologias e benchmark comparativo. |
 | `script_topology.py` | Orquestrador do benchmark. Salva em `output-<ctrl>-<topo>/` e gera gráficos ao final. |
 | `plot_results.py` | Gera gráficos PNG individuais a partir das pastas de teste. |
-| `plot_benchmark.py` | Gera gráficos comparativos ONOS × ODL em `output-benchmarking/`. |
+| `plot_benchmark.py` | Gera gráficos comparativos por topologia em `output-benchmarking-<topo>/<timestamp>/`. |
 | `output_utils.py` | Utilitários de caminhos e descoberta de pastas de teste. |
 | `topology_discovery.py` | Métrica RFC 8456: captura OpenFlow (Scapy), consulta REST, calcula tempos TDT/LDT. |
 | `workload.py` | Cria topologias no Mininet (`mesh`, `star`, `3-tier`, `leaf-spine`) conectadas ao controlador remoto. |
