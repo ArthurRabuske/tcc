@@ -1,120 +1,91 @@
 # TCC — Benchmark de Controladores SDN
 
-Projeto de benchmark baseado na metodologia do **RFC 8456** (*Benchmarking Methodology for Software-Defined Networking (SDN) Controller Performance*). O código mede desempenho de controladores SDN (ONOS, OpenDaylight, Floodlight) em cenários como descoberta de topologia, API northbound e carga de trabalho em redes emuladas com **Mininet**.
+Projeto de benchmark baseado na metodologia do **RFC 8456** (*Benchmarking Methodology for Software-Defined Networking (SDN) Controller Performance*). O código mede desempenho de controladores SDN (**ONOS** e **OpenDaylight**) em cenários como descoberta de topologia, API northbound e carga de trabalho em redes emuladas com **Mininet**.
 
 ---
 
 ## Índice
 
 1. [Visão geral da arquitetura](#visão-geral-da-arquitetura)
-2. [Pré-requisitos](#pré-requisitos)
-3. [Configuração das VMs](#configuração-das-vms)
+2. [Controladores suportados](#controladores-suportados)
+3. [Pré-requisitos](#pré-requisitos)
 4. [Instalação na VM Mininet](#instalação-na-vm-mininet)
-5. [Verificação de conectividade](#verificação-de-conectividade)
-6. [Como executar os benchmarks](#como-executar-os-benchmarks)
-7. [Onde ficam os resultados](#onde-ficam-os-resultados)
-8. [Referência de arquivos](#referência-de-arquivos)
-9. [Solução de problemas](#solução-de-problemas)
+5. [Configuração inicial](#configuração-inicial)
+6. [Verificação de conectividade](#verificação-de-conectividade)
+7. [Como executar os benchmarks](#como-executar-os-benchmarks)
+   - [Forma recomendada: `run_tests.py`](#forma-recomendada-run_testspy)
+   - [Execução manual (avançado)](#execução-manual-avançado)
+8. [Testes com OpenDaylight](#testes-com-opendaylight)
+9. [Onde ficam os resultados](#onde-ficam-os-resultados)
+10. [Visualização em gráficos](#visualização-em-gráficos)
+11. [Referência de arquivos](#referência-de-arquivos)
+12. [Solução de problemas](#solução-de-problemas)
+13. [Referências](#referências)
 
 ---
 
 ## Visão geral da arquitetura
 
-O projeto foi pensado para rodar em **duas máquinas virtuais**:
+O projeto roda em **duas máquinas virtuais** em rede:
 
 ```
-┌─────────────────────────┐         ┌──────────────────────────────┐
-│      VM ONOS            │         │       VM Mininet             │
-│                         │         │                              │
-│  • ONOS (Java)          │◄─6653───│  • Mininet (topologias)      │
-│  • Porta OpenFlow 6653  │ OpenFlow│  • Scripts de benchmark      │
-│  • REST API 8181        │◄─8181───│  • Captura de pacotes (Scapy)│
-│  • SSH (monitoramento)  │◄─22─────│  • ControllerMonitor (SSH)   │
-└─────────────────────────┘         └──────────────────────────────┘
+┌─────────────────────────────┐         ┌──────────────────────────────┐
+│   VM Controlador SDN        │         │       VM Mininet             │
+│   (ONOS ou OpenDaylight)    │         │                              │
+│                             │         │  • Mininet (topologias)      │
+│  • Controlador (Java)       │◄─OpenFlow│  • run_tests.py (menu)      │
+│  • REST API (8181)          │◄─8181───│  • Scripts de benchmark      │
+│  • SSH (monitoramento)      │◄─22─────│  • Captura OpenFlow (Scapy)  │
+└─────────────────────────────┘         │  • plot_results.py (gráficos)│
+                                        └──────────────────────────────┘
 ```
 
 | VM | Papel |
 |---|---|
-| **VM ONOS** | Executa o controlador SDN. Recebe conexões OpenFlow dos switches e responde à API REST. |
-| **VM Mininet** | Executa **todos os scripts deste repositório**. Cria topologias, gera tráfego, consulta a API REST e captura pacotes OpenFlow. |
+| **VM Controlador** | Executa ONOS ou OpenDaylight. Recebe conexões OpenFlow dos switches e responde à API REST. |
+| **VM Mininet** | Executa **todos os scripts deste repositório**. Cria topologias, mede tempos, consulta REST e gera resultados. |
 
-> **Importante:** os benchmarks são executados **na VM Mininet**, apontando para o IP da VM ONOS com os parâmetros `-ip` e `-r`.
+> **Importante:** os benchmarks são sempre executados **na VM Mininet**, apontando para o IP da VM do controlador.
+
+---
+
+## Controladores suportados
+
+| | **ONOS** | **OpenDaylight (ODL)** |
+|---|---|---|
+| Nome no projeto (`-n`) | `onos` | `odl` |
+| Porta OpenFlow | **6653** | **6633** |
+| Porta REST | **8181** | **8181** |
+| Autenticação REST | `onos` / `rocks` | `admin` / `admin` |
+| Endpoint REST (topologia) | `/onos/v1/topology` | `/restconf/operational/opendaylight-inventory:nodes` |
+| Processo monitorado (SSH) | `java` | `java` |
 
 ---
 
 ## Pré-requisitos
 
-### VM ONOS
+### VM do controlador (ONOS ou ODL)
 
-- ONOS instalado e em execução
+- Controlador instalado e em execução
 - Portas liberadas no firewall:
-  - **6653** — OpenFlow
+  - **OpenFlow** — 6653 (ONOS) ou 6633 (ODL)
   - **8181** — REST API
   - **22** — SSH (opcional, para monitoramento de CPU/memória)
-- Credenciais REST padrão do ONOS: usuário `onos`, senha `rocks`
-- Apps recomendados ativos no ONOS: OpenFlow, LLDP (descoberta de links), Host Location Provider
+- Apps/features necessários para descoberta de topologia (OpenFlow, LLDP/link discovery)
 
 ### VM Mininet
 
 - Ubuntu/Debian com Mininet instalado
-- Python 3
-- Acesso de rede à VM ONOS (ping + portas 6653 e 8181)
-- Execução com **`sudo`** (Mininet e captura de pacotes exigem privilégios de root)
-
----
-
-## Configuração das VMs
-
-### 1. VM ONOS — iniciar o controlador
-
-Exemplo com serviço ONOS:
-
-```bash
-# Na VM ONOS
-onos-service start
-# ou, se usar Docker/imagem própria, siga o procedimento da sua instalação
-```
-
-Confirme que a API responde (na própria VM ONOS ou na Mininet):
-
-```bash
-curl -u onos:rocks http://<IP_ONOS>:8181/onos/v1/devices
-```
-
-### 2. VM Mininet — editar configurações do projeto
-
-Antes de rodar os testes, ajuste estes arquivos:
-
-#### `global_variables.py` — monitoramento remoto de CPU/memória
-
-O script `topology_discovery.py` usa SSH para medir CPU e memória do processo Java do controlador na VM ONOS:
-
-```python
-controller_monitor = ControllerMonitor(
-    'java',              # nome do processo a monitorar
-    '<IP_VM_ONOS>',      # IP da VM ONOS
-    '<usuario_ssh>',     # usuário SSH
-    '<senha_ssh>'        # senha SSH
-)
-```
-
-Substitua os valores pelo IP e credenciais **da sua VM ONOS**. Se não quiser monitorar CPU/memória, o benchmark ainda roda, mas esses campos no CSV ficarão vazios ou podem gerar erro de conexão SSH.
-
-#### `REST_tests/onos.py` — teste rápido de API
-
-Altere o IP para o da sua VM ONOS:
-
-```python
-CONTROLLER_IP = '<IP_VM_ONOS>'
-REST_PORT = '8181'
-```
+- Python 3 e pip
+- Acesso de rede à VM do controlador
+- Execução com **`sudo`** (Mininet e Scapy exigem privilégios de root)
 
 ---
 
 ## Instalação na VM Mininet
 
 ```bash
-# Dependências do sistema (Ubuntu/Debian)
+# Dependências do sistema
 sudo apt update
 sudo apt install -y mininet openvswitch-switch python3-pip
 
@@ -122,11 +93,65 @@ sudo apt install -y mininet openvswitch-switch python3-pip
 cd tcc
 sudo pip3 install requests scapy paramiko psutil mininet
 
-# Crie a pasta de saída (se não existir)
-mkdir -p output
+# Dependência opcional para gráficos
+pip3 install -r requirements.txt
+
+# Pasta de saída
+mkdir -p output output/plots
 ```
 
-> Rode sempre os scripts **a partir da pasta `tcc/`**, pois eles leem e gravam arquivos em caminhos relativos (`output/`, `json/`).
+> Rode sempre os scripts **a partir da pasta `tcc/`**, pois eles usam caminhos relativos (`output/`, `json/`).
+
+---
+
+## Configuração inicial
+
+Antes do primeiro teste, ajuste estes arquivos conforme o seu ambiente.
+
+### 1. `run_tests.py` — IP, portas e interface
+
+Edite o dicionário `CONTROLADORES` e a interface padrão:
+
+```python
+CONTROLADORES = {
+    "onos": {
+        "ip":        "192.168.0.134",   # IP da VM ONOS
+        "rest_port": "8181",
+        "of_port":   "6653",
+        ...
+    },
+    "odl": {
+        "ip":        "192.168.0.134",   # IP da VM OpenDaylight
+        "rest_port": "8181",
+        "of_port":   "6633",            # ODL usa 6633, não 6653
+        ...
+    },
+}
+
+DEFAULT_IFACE = "enp0s3"   # interface que encaminha tráfego ao controlador
+```
+
+### 2. `global_variables.py` — monitoramento de CPU/memória via SSH
+
+Usado por `topology_discovery.py` para medir uso do processo Java na VM do controlador:
+
+```python
+controller_monitor = ControllerMonitor(
+    'java',
+    '192.168.0.134',   # IP da VM do controlador
+    'onos',            # usuário SSH
+    '1234'             # senha SSH
+)
+```
+
+### 3. `REST_tests/` — testes rápidos de API
+
+| Arquivo | Controlador | O que testa |
+|---|---|---|
+| `REST_tests/onos.py` | ONOS | Topologia, links e hosts |
+| `REST_tests/odl.py` | OpenDaylight | Switches, links e hosts |
+
+Altere `CONTROLLER_IP` em cada arquivo para o IP da VM correspondente.
 
 ---
 
@@ -137,250 +162,266 @@ Execute **na VM Mininet**, na ordem abaixo.
 ### Passo 1 — Rede
 
 ```bash
-ping <IP_VM_ONOS>
+ping <IP_CONTROLADOR>
 ```
 
-### Passo 2 — REST API do ONOS
+### Passo 2 — REST API
 
-Edite o IP em `REST_tests/onos.py` e execute:
+**ONOS:**
 
 ```bash
 cd tcc
 python3 REST_tests/onos.py
 ```
 
-Saída esperada (valores variam):
-
-```
-Topo = ... | Links = ... | Hosts = ...
-```
-
-### Passo 3 — OpenFlow (teste manual com Mininet)
+**OpenDaylight:**
 
 ```bash
-sudo mn --controller=remote,ip=<IP_VM_ONOS>,port=6653 --switch ovsk,protocols=OpenFlow13 --test pingall
+cd tcc
+python3 REST_tests/odl.py
 ```
 
-Se `pingall` funcionar, a VM Mininet alcança o ONOS via OpenFlow.
+### Passo 3 — OpenFlow (Mininet)
+
+**ONOS (porta 6653):**
+
+```bash
+sudo mn --controller=remote,ip=<IP_ONOS>,port=6653 --switch ovsk,protocols=OpenFlow13 --test pingall
+```
+
+**OpenDaylight (porta 6633):**
+
+```bash
+sudo mn --controller=remote,ip=<IP_ODL>,port=6633 --switch ovsk,protocols=OpenFlow13 --test pingall
+```
 
 ### Passo 4 — Interface para captura de pacotes
 
-Os scripts de descoberta de topologia capturam tráfego OpenFlow com Scapy. Use a interface de rede que encaminha tráfego para a VM ONOS (geralmente `eth0`, `ens33` ou similar):
+Os scripts de descoberta capturam tráfego OpenFlow com Scapy. Descubra a interface correta:
 
 ```bash
-ip route get <IP_VM_ONOS>
-# Anote o nome da interface (ex.: eth0)
+ip route get <IP_CONTROLADOR>
 ```
 
-Use esse nome no parâmetro `-if` dos benchmarks.
+Use o nome retornado (ex.: `enp0s3`, `eth0`) no parâmetro `-if` ou em `DEFAULT_IFACE` do `run_tests.py`.
 
 ---
 
 ## Como executar os benchmarks
 
-Todos os comandos abaixo rodam **na VM Mininet**, dentro da pasta `tcc/`, com **`sudo`**.
+### Forma recomendada: `run_tests.py`
 
-Substitua `<IP_ONOS>` pelo IP real da VM ONOS e `<IFACE>` pela interface de rede correta (ex.: `eth0`).
+**`run_tests.py`** é a interface interativa principal do projeto. Ela automatiza a montagem dos comandos, aplica as configurações corretas de cada controlador (porta OpenFlow, nome, REST) e guia a escolha da topologia.
 
----
+```bash
+cd tcc
+sudo python3 run_tests.py
+```
 
-### Benchmark 1 — Descoberta de topologia (experimento completo)
+#### Menu principal
 
-**Arquivo principal:** `script_topology.py`
+```
+[1]  Teste ONOS
+[2]  Teste OpenDaylight
+[3]  Benchmark ONOS × OpenDaylight  (em desenvolvimento)
+[0]  Sair
+```
 
-Este é o **ponto de entrada recomendado** para o benchmark de descoberta de topologia. Ele:
+#### Menu de topologias (após escolher o controlador)
 
-1. Para cada tamanho de topologia, executa várias tentativas (`-tr`)
-2. Em paralelo, roda `topology_discovery.py` (mede tempo via OpenFlow + REST)
-3. Roda `workload.py` (sobe a topologia no Mininet conectada ao ONOS remoto)
-4. Gera CSV e relatório em `output/`
-5. Ao final, tenta enviar e-mail com os resultados (pode falhar se `email_sender.py` não estiver configurado — veja [Solução de problemas](#solução-de-problemas))
+```
+[1]  Mesh        — todos os switches conectados entre si
+[2]  Leaf-Spine  — leafs conectados a spines centrais
+[3]  3-Tier      — core → aggregation → access
+[0]  Voltar
+```
 
-#### Exemplo — topologia mesh com ONOS
+Para cada topologia, o menu solicita os parâmetros do experimento (IP, portas, interface, trials, tamanhos) com valores padrão já preenchidos conforme o controlador selecionado. Ao confirmar, o script executa `script_topology.py` com os argumentos corretos.
+
+#### Fluxo típico com `run_tests.py`
+
+```
+1. [VM Controlador]  Iniciar ONOS ou OpenDaylight
+2. [VM Mininet]      sudo python3 run_tests.py
+3.                  Escolher controlador (1 = ONOS, 2 = ODL)
+4.                  Escolher topologia (Mesh / Leaf-Spine / 3-Tier)
+5.                  Confirmar parâmetros (Enter aceita o padrão)
+6.                  Aguardar conclusão
+7.                  Ver resultados em output/
+8.                  python3 plot_results.py  → gerar gráficos
+```
+
+#### O que o `run_tests.py` executa por baixo dos panos
+
+Para cada teste, monta e roda um comando equivalente a:
 
 ```bash
 sudo python3 script_topology.py \
-  -ip <IP_ONOS> \
+  -t <topologia> \
+  -ip <IP> -n <onos|odl> -r <REST_PORT> -p <OF_PORT> \
+  -if <interface> -q 3 -c 50 -s 5 -tr 3 -d 5 -max 20 \
+  --num-switches 10          # mesh
+  # ou --num-leafs 4 --num-spines 2   # leaf-spine
+  # ou --num-cores 2 --num-aggs 4 --num-access 8  # 3-tier
+```
+
+---
+
+### Execução manual (avançado)
+
+Use quando precisar de controle fino sobre os parâmetros ou automação externa.
+
+#### Descoberta de topologia — `script_topology.py`
+
+Orquestrador principal. Para cada tamanho de topologia:
+
+1. Executa `topology_discovery.py` (mede tempo via OpenFlow + REST)
+2. Executa `workload.py` (sobe a topologia no Mininet)
+3. Agrega resultados em CSV e relatório em `output/`
+
+**Exemplo — ONOS, mesh:**
+
+```bash
+sudo python3 script_topology.py \
+  -ip 192.168.0.134 \
   -n onos \
+  -p 6653 \
   -r 8181 \
   -t mesh \
   --num-switches 10 \
-  -if <IFACE> \
-  -q 3 \
-  -c 50 \
-  -s 5 \
-  -tr 10 \
-  -d 5 \
-  -max 50
+  -if enp0s3 \
+  -q 3 -c 50 -s 5 -tr 3 -d 5 -max 20
 ```
 
-#### Exemplo — topologia 3-tier
+**Exemplo — OpenDaylight, mesh:**
 
 ```bash
 sudo python3 script_topology.py \
-  -ip <IP_ONOS> \
-  -n onos \
-  -t 3-tier \
-  --num-cores 2 \
-  --num-aggs 4 \
-  --num-access 8 \
-  -if <IFACE> \
-  -q 3 \
-  -c 50 \
-  -s 2 \
-  -tr 5 \
-  -d 2 \
-  -max 30
+  -ip 192.168.0.134 \
+  -n odl \
+  -p 6633 \
+  -r 8181 \
+  -t mesh \
+  --num-switches 10 \
+  -if enp0s3 \
+  -q 3 -c 50 -s 5 -tr 3 -d 5 -max 20
 ```
 
-#### Exemplo — leaf-spine
-
-```bash
-sudo python3 script_topology.py \
-  -ip <IP_ONOS> \
-  -n onos \
-  -t leaf-spine \
-  --num-leafs 4 \
-  --num-spines 2 \
-  -if <IFACE> \
-  -q 3 \
-  -c 50 \
-  -s 2 \
-  -tr 5 \
-  -d 2 \
-  -max 20
-```
-
-#### Parâmetros principais de `script_topology.py`
+#### Parâmetros de `script_topology.py`
 
 | Parâmetro | Descrição |
 |---|---|
-| `-ip` | IP da VM ONOS |
-| `-n` | Nome do controlador: `onos`, `odl` ou `floodlight` |
-| `-r` | Porta REST (ONOS: `8181`) |
-| `-t` | Tipo de topologia: `mesh`, `3-tier`, `leaf-spine`, `star` |
-| `-if` | Interface de rede para captura OpenFlow (Scapy) |
-| `-q` | Intervalo (s) entre consultas REST à topologia |
-| `-c` | Falhas consecutivas antes de desistir (switches) |
+| `-ip` | IP da VM do controlador |
+| `-n` | Nome: `onos` ou `odl` |
+| `-p` | Porta OpenFlow (6653 ONOS / 6633 ODL) |
+| `-r` | Porta REST (8181) |
+| `-t` | Topologia: `mesh`, `3-tier`, `leaf-spine`, `star` |
+| `-if` | Interface de rede para captura OpenFlow |
+| `-q` | Intervalo (s) entre consultas REST |
+| `-c` | Falhas consecutivas antes de desistir |
 | `-s` | Tamanho inicial da topologia |
-| `-tr` | Número de repetições (trials) por tamanho |
+| `-tr` | Repetições (trials) por tamanho |
 | `-d` | Incremento do tamanho a cada rodada |
-| `-max` | Tamanho máximo agregado da topologia |
-| `-k` / `--no_links` | Medir só switches, sem esperar descoberta de links |
+| `-max` | Tamanho máximo agregado |
+| `-k` / `--no_links` | Medir só switches, sem esperar links |
 
----
+#### API Northbound — `northbound_api.py`
 
-### Benchmark 2 — API Northbound (tempo de resposta e throughput)
-
-**Arquivo principal:** `northbound_api.py`
-
-Sobe uma topologia fixa no Mininet e mede:
-
-- **Tempo médio de resposta** da API REST (`-rt`)
-- **Throughput máximo** de requisições concorrentes (`-tp`)
+Mede tempo de resposta (`-rt`) e throughput (`-tp`) da API REST com topologia ativa:
 
 ```bash
 sudo python3 northbound_api.py \
-  -ip <IP_ONOS> \
-  -n onos \
-  -r 8181 \
-  -t mesh \
-  -s 10 \
-  -q 3 \
-  -nt 100 \
-  -rt \
-  -tp \
-  -mr 100 \
-  -d 30 \
-  -i 10
+  -ip 192.168.0.134 -n onos -r 8181 \
+  -t mesh -s 10 -q 3 -nt 100 \
+  -rt -tp -mr 100 -d 30 -i 10
 ```
 
-| Parâmetro | Descrição |
+#### Componentes individuais (depuração)
+
+| Script | Função |
 |---|---|
-| `-rt` | Ativa medição de tempo de resposta |
-| `-tp` | Ativa medição de throughput |
-| `-s` | Tamanho da topologia (parâmetro interno) |
-| `-nt` | Número de testes de tempo de resposta |
-| `-mr` | Máximo de requisições concorrentes |
-| `-d` | Duração (s) de cada etapa de throughput |
-| `-i` | Incremento de requisições concorrentes por etapa |
+| `workload.py` | Sobe topologia no Mininet conectada ao controlador remoto |
+| `topology_discovery.py` | Mede tempo de descoberta (requer topologia ativa) |
+| `northbound_api.py` | Benchmark completo da API REST |
+| `ofpt_packetin_record.py` | Registra timestamps de Packet-In OpenFlow |
+| `host_links_onoff.py` | Testes de descoberta de links/hosts (ligar/desligar) |
 
 ---
 
-### Benchmark 3 — Componentes individuais
+## Testes com OpenDaylight
 
-Use estes scripts para testes isolados ou depuração.
+Esta seção detalha o que é diferente ao benchmarkar o **OpenDaylight** em relação ao ONOS.
 
-#### `topology_discovery.py` — descoberta de topologia (uma execução)
+### 1. Preparar a VM OpenDaylight
 
-Mede o tempo entre o primeiro `Packet-Out` e a confirmação da topologia via REST. **Requer** que a topologia já esteja sendo criada (por `workload.py` em outro terminal ou antes).
-
-```bash
-# Terminal 1 — sobe a topologia
-sudo python3 workload.py -ip <IP_ONOS> -n onos -t mesh --num-switches 10
-
-# Terminal 2 — mede descoberta (ajuste -l ao número de switches)
-sudo python3 topology_discovery.py \
-  -ip <IP_ONOS> -n onos -r 8181 \
-  -l 10 -q 3 -c 50 -if <IFACE>
-```
-
-Resultado em: `output/topo_disc_onos.txt`
-
-#### `workload.py` — gerador de carga / topologia Mininet
-
-Cria a rede no Mininet e conecta ao controlador remoto. Modos extras:
+Inicie o Karaf/ODL e instale as features necessárias:
 
 ```bash
-# Só topologia (modo interativo Mininet CLI)
-sudo python3 workload.py -ip <IP_ONOS> -t mesh --num-switches 10
-
-# Teste de descoberta de links (liga/desliga links)
-sudo python3 workload.py -ip <IP_ONOS> -n onos -t mesh --num-switches 10 \
-  --links --links_to_add 2
-
-# Teste de descoberta de hosts (conecta/desconecta hosts)
-sudo python3 workload.py -ip <IP_ONOS> -n onos -t mesh --num-switches 10 \
-  --hosts --hosts_to_add 3
+# Na VM OpenDaylight (console Karaf)
+feature:install odl-restconf odl-l2switch-switch odl-mdsal-apidocs
 ```
 
-#### `throughput_request.py` — throughput da API (sem Mininet)
-
-Mede throughput REST **sem** subir topologia. Útil se o controlador já tiver switches conectados.
+Confirme que a REST responde:
 
 ```bash
-python3 throughput_request.py -ip <IP_ONOS> -n onos -r 8181 -mr 100 -d 30
+curl -u admin:admin http://<IP_ODL>:8181/restconf/operational/opendaylight-inventory:nodes
 ```
 
-> **Nota:** este script referencia um parser `throughput` que pode não estar definido em `arguments_parser.py`. Prefira `northbound_api.py -tp` para throughput completo.
+### 2. Diferenças importantes em relação ao ONOS
 
-#### `response_time.py` — tempo de resposta (com topologia)
+| Aspecto | ONOS | OpenDaylight |
+|---|---|---|
+| Porta OpenFlow no Mininet | `-p 6653` | `-p 6633` |
+| Nome do controlador (`-n`) | `onos` | `odl` |
+| Credenciais REST | `onos:rocks` | `admin:admin` |
+| Contagem de links | direto da API | ODL adiciona 1 link local por switch; o código subtrai isso |
+| Endpoint REST usado | `/onos/v1/topology` | `/restconf/operational/opendaylight-inventory:nodes` |
 
-Similar ao modo `-rt` de `northbound_api.py`. Pode exigir ajuste no parser.
-
-#### `ofpt_packetin_record.py` — gravar timestamps de Packet-In
-
-Captura e registra horários de mensagens `OFPTPacketIn`:
+### 3. Executar via `run_tests.py` (recomendado)
 
 ```bash
-sudo python3 ofpt_packetin_record.py \
-  -ip <IP_ONOS> -n onos -p 6653 -if <IFACE>
+cd tcc
+sudo python3 run_tests.py
+# Escolha [2] Teste OpenDaylight
+# Escolha a topologia desejada
+# Confirme os parâmetros (porta OpenFlow já vem como 6633)
 ```
 
-Saída: `output/last_ofpt_packet_in_onos.txt`
+### 4. Executar manualmente
 
----
+```bash
+# Validar REST
+python3 REST_tests/odl.py
 
-### Fluxo resumido (ONOS + Mininet)
+# Validar OpenFlow (porta 6633!)
+sudo mn --controller=remote,ip=<IP_ODL>,port=6633 --switch ovsk,protocols=OpenFlow13 --test pingall
+
+# Benchmark mesh
+sudo python3 script_topology.py \
+  -ip <IP_ODL> -n odl -p 6633 -r 8181 \
+  -t mesh --num-switches 10 \
+  -if enp0s3 -q 3 -c 50 -s 5 -tr 3 -d 5 -max 20
+```
+
+### 5. Resultados do OpenDaylight
+
+Os arquivos seguem o mesmo padrão de nomenclatura, com prefixo `odl_`:
 
 ```
-1. [VM ONOS]  Iniciar ONOS
-2. [VM Mininet] Editar global_variables.py e REST_tests/onos.py
-3. [VM Mininet] python3 REST_tests/onos.py          → validar REST
-4. [VM Mininet] sudo mn --controller=remote,...     → validar OpenFlow
-5. [VM Mininet] sudo python3 script_topology.py ... → benchmark principal
-6. [VM Mininet] Ver resultados em output/
+output/odl_mesh_average_topology_discovery_time.csv
+output/odl_mesh_topology_discovery_time_report.txt
+output/topo_disc_odl.txt
 ```
+
+Gere gráficos normalmente:
+
+```bash
+python3 plot_results.py
+```
+
+### 6. Comparar ONOS vs OpenDaylight
+
+Rode os mesmos parâmetros (topologia, `-s`, `-tr`, `-d`, `-max`) para ambos os controladores e compare os CSVs ou use `plot_results.py` para visualizar cada um. A opção **[3] Benchmark ONOS × OpenDaylight** no `run_tests.py` está **em desenvolvimento** e rodará todos os testes automaticamente no futuro.
 
 ---
 
@@ -388,13 +429,22 @@ Saída: `output/last_ofpt_packet_in_onos.txt`
 
 | Arquivo | Conteúdo |
 |---|---|
-| `output/<controlador>_<topo>_average_topology_discovery_time.csv` | Médias por tamanho de topologia (TDT, LDT, CPU, memória, pacotes) |
-| `output/<controlador>_<topo>_topology_discovery_time_report.txt` | Relatório detalhado com parâmetros e dados por trial |
-| `output/topo_disc_<controlador>.txt` | Resultado bruto de cada execução de `topology_discovery.py` |
-| `output/link_length.txt` | Número de links da última topologia criada por `workload.py` |
-| `output/last_ofpt_packet_in_<controlador>.txt` | Timestamps de Packet-In |
+| `output/<controlador>_<topo>_average_topology_discovery_time.csv` | Médias por tamanho de topologia |
+| `output/<controlador>_<topo>_topology_discovery_time_report.txt` | Parâmetros do teste + dados brutos por trial |
+| `output/topo_disc_<controlador>.txt` | Resultado bruto da última execução de descoberta |
+| `output/link_length.txt` | Número de links da última topologia criada |
+| `output/plots/` | Gráficos PNG gerados por `plot_results.py` |
 
-Colunas do CSV (`script_topology.py`):
+### Exemplos reais gerados pelo projeto
+
+```
+output/onos_mesh_average_topology_discovery_time.csv
+output/onos_leaf-spine_average_topology_discovery_time.csv
+output/onos_3-tier_average_topology_discovery_time.csv
+output/odl_mesh_average_topology_discovery_time.csv
+```
+
+### Colunas do CSV
 
 | Coluna | Significado |
 |---|---|
@@ -402,96 +452,85 @@ Colunas do CSV (`script_topology.py`):
 | `avg_tdt` | Tempo médio de descoberta de switches (Topology Discovery Time) |
 | `avg_ldt` | Tempo médio de descoberta de links (Link Discovery Time) |
 | `avg_total` | Soma TDT + LDT |
-| `avg_lldp_len` / `avg_pkt_len` | Volume de tráfego LLDP/pacotes |
+| `avg_lldp_len` / `avg_pkt_len` | Volume de tráfego LLDP/pacotes observado |
+| `avg_lldp_count` / `avg_pkt_count` | Contagem de eventos LLDP/pacotes |
 | `avg_cpu` / `avg_memory` | Uso médio de CPU/memória do controlador (via SSH) |
 
 ---
 
-## Visualização em gráficos (PNG)
+## Visualização em gráficos
 
-Os experimentos de descoberta de topologia geram um CSV com médias em `output/*_average_topology_discovery_time.csv`.
-Para transformar isso em gráficos (melhor para relatório/apresentação do TCC), use o script `plot_results.py`.
+O script `plot_results.py` lê os CSVs de `output/` e gera PNGs em `output/plots/`.
 
-### Instalar dependência de gráficos
-
-Na VM Mininet:
+### Instalar dependência
 
 ```bash
 cd tcc
 pip3 install -r requirements.txt
 ```
 
-Se o `pip3` não existir, instale primeiro:
-
-```bash
-sudo apt update
-sudo apt install -y python3-pip
-```
-
 ### Gerar gráficos para todos os CSVs
 
 ```bash
-cd tcc
 python3 plot_results.py
 ```
 
-Isso cria os PNGs em `output/plots/` (por padrão), com:
-
-- `*_times.png`: linhas de `avg_tdt`, `avg_ldt`, `avg_total`
-- `*_cpu_mem.png`: `avg_cpu` e `avg_memory`
-- `*_traffic_bytes.png`: `avg_lldp_len` e `avg_pkt_len`
-- `*_traffic_count.png`: `avg_lldp_count` e `avg_pkt_count`
-- `*_summary.png`: figura consolidada (4 subplots)
-
-### Gerar gráficos para um CSV específico
+### Gerar para um CSV específico
 
 ```bash
-cd tcc
 python3 plot_results.py --input output/onos_mesh_average_topology_discovery_time.csv
 ```
+
+### Gráficos gerados
+
+| Arquivo PNG | Conteúdo |
+|---|---|
+| `*_times.png` | `avg_tdt`, `avg_ldt`, `avg_total` vs tamanho da topologia |
+| `*_cpu_mem.png` | CPU e memória vs tamanho |
+| `*_traffic_bytes.png` | Volume de tráfego LLDP/pacotes |
+| `*_traffic_count.png` | Contagem de eventos |
+| `*_summary.png` | Figura consolidada com os 4 painéis |
 
 ---
 
 ## Referência de arquivos
 
-### Scripts principais (raiz do projeto)
+### Scripts principais
 
 | Arquivo | Função |
 |---|---|
-| `script_topology.py` | **Orquestrador principal** do benchmark de descoberta de topologia. Executa trials, agrega resultados em CSV e relatório. |
-| `topology_discovery.py` | Implementa a métrica RFC 8456 de descoberta de topologia: captura OpenFlow (Scapy), consulta REST, calcula tempos. |
+| **`run_tests.py`** | **Interface interativa principal.** Menu para escolher controlador (ONOS/ODL), topologia e parâmetros; executa `script_topology.py` automaticamente. |
+| `script_topology.py` | Orquestrador do benchmark de descoberta de topologia. Executa trials, agrega CSV e relatório. |
+| `topology_discovery.py` | Métrica RFC 8456: captura OpenFlow (Scapy), consulta REST, calcula tempos TDT/LDT. |
 | `workload.py` | Cria topologias no Mininet (`mesh`, `star`, `3-tier`, `leaf-spine`) conectadas ao controlador remoto. |
-| `northbound_api.py` | Benchmark da API northbound: tempo de resposta e throughput de requisições REST. |
-| `response_time.py` | Mede tempo médio de resposta da API REST com topologia ativa. |
-| `throughput_request.py` | Mede throughput máximo da API REST com requisições concorrentes. |
-| `host_links_onoff.py` | Funções para ligar/desligar links e hosts e medir tempo de reconhecimento pelo controlador. |
-| `setup_dhcp.py` | Configura DHCP no controlador (ONOS, Floodlight, ODL) via REST — usado em testes com hosts DHCP. |
-| `ControllerMonitor.py` | Thread que monitora CPU e memória do processo do controlador via SSH (Paramiko). |
-| `global_variables.py` | Variáveis globais compartilhadas e instância do `ControllerMonitor` (IP/credenciais SSH). |
-| `arguments_parser.py` | Definição centralizada de argumentos de linha de comando para todos os scripts. |
-| `email_sender.py` | Envia resultados por e-mail ao final de `script_topology.py`. |
-| `ofpt_packetin_record.py` | Utilitário para registrar timestamps de mensagens OpenFlow Packet-In. |
+| `northbound_api.py` | Benchmark da API northbound: tempo de resposta e throughput REST. |
+| `plot_results.py` | Gera gráficos PNG a partir dos CSVs de `output/`. |
+| `host_links_onoff.py` | Testes de descoberta de links/hosts (ligar/desligar interfaces e medir reconhecimento). |
+| `setup_dhcp.py` | Configura DHCP no controlador via REST (ONOS, ODL, Floodlight). |
+| `ControllerMonitor.py` | Monitora CPU/memória do processo Java do controlador via SSH. |
+| `global_variables.py` | Variáveis globais e instância do `ControllerMonitor`. |
+| `arguments_parser.py` | Argumentos de linha de comando centralizados para todos os scripts. |
+| `email_sender.py` | Envio opcional de resultados por e-mail (via variáveis de ambiente). |
+| `ofpt_packetin_record.py` | Registra timestamps de mensagens OpenFlow Packet-In. |
+| `response_time.py` | Mede tempo médio de resposta REST (legado; prefira `northbound_api.py -rt`). |
+| `throughput_request.py` | Mede throughput REST sem Mininet (legado; prefira `northbound_api.py -tp`). |
 
 ### Pastas auxiliares
 
 | Pasta / arquivo | Função |
 |---|---|
-| `REST_tests/onos.py` | Teste simples da API REST do ONOS (topologia, links, hosts). |
-| `REST_tests/odl.py` | Teste REST para OpenDaylight. |
-| `REST_tests/floodlight.py` | Teste REST para Floodlight. |
-| `json/` | Configurações JSON para DHCP e controladores (ONOS, ODL, Floodlight). |
+| `REST_tests/onos.py` | Teste rápido da API REST do ONOS. |
+| `REST_tests/odl.py` | Teste rápido da API REST do OpenDaylight. |
+| `REST_tests/floodlight.py` | Teste rápido da API REST do Floodlight. |
+| `json/` | Configurações JSON (DHCP, VLANs, switches) por controlador. |
 | `json/onos_dhcp.json` | Configuração DHCP para app ONOS. |
-| `json/enable.json`, `instance1.json`, `vlans.json` | Configurações DHCP para Floodlight. |
 | `json/odl.json`, `odl_enabledhcp.json` | Configurações para OpenDaylight. |
-| `json/dnsmasq.conf` | Configuração dnsmasq (referência). |
-| `json/switchs.json` | Metadados de switches. |
-| `output/` | Diretório de saída de todos os experimentos. |
-| `stats/getThput.py` | Análise de throughput a partir de arquivo `.pcap` (Matplotlib + Scapy). |
-| `scratch/customTopo.py` | Protótipo/experimento de topologia customizada no Mininet. |
-| `scratch/traffGen.py` | Geração de tráfego experimental. |
-| `scratch/traffTest.py` | Testes de tráfego experimental. |
-| `apps/` | Versões antigas/alternativas de scripts para Floodlight e hub flows. |
-| `application-plane/` | Versões alternativas de scripts de topologia e Floodlight (planejamento de aplicação). |
+| `output/` | Saída de todos os experimentos e gráficos. |
+| `requirements.txt` | Dependência Python para gráficos (`matplotlib`). |
+| `stats/getThput.py` | Análise de throughput a partir de `.pcap`. |
+| `scratch/` | Protótipos experimentais (topologia, tráfego). |
+| `apps/` | Versões alternativas para Floodlight. |
+| `application-plane/` | Versões alternativas de scripts de topologia. |
 
 ---
 
@@ -499,13 +538,13 @@ python3 plot_results.py --input output/onos_mesh_average_topology_discovery_time
 
 ### `Permission denied` ou Mininet não inicia
 
-Execute com `sudo`:
-
 ```bash
+sudo python3 run_tests.py
+# ou
 sudo python3 script_topology.py ...
 ```
 
-Limpe estado do Mininet entre execuções:
+Limpe o estado do Mininet entre execuções:
 
 ```bash
 sudo mn -c
@@ -513,32 +552,31 @@ sudo mn -c
 
 ### REST API não responde
 
-- Confirme ONOS rodando na VM ONOS: `curl -u onos:rocks http://localhost:8181/onos/v1/devices`
-- Verifique firewall na VM ONOS (`ufw`, `iptables`)
-- Teste da VM Mininet: `python3 REST_tests/onos.py`
+- Confirme o controlador rodando na VM
+- Verifique firewall (`ufw`, `iptables`)
+- Teste com `REST_tests/onos.py` ou `REST_tests/odl.py`
 
 ### OpenFlow não conecta
 
-- Porta 6653 aberta na VM ONOS
-- IP correto em `-ip`
-- Teste: `sudo mn --controller=remote,ip=<IP_ONOS>,port=6653 --switch ovsk,protocols=OpenFlow13 --test pingall`
+- **ONOS:** porta **6653**
+- **OpenDaylight:** porta **6633** (não confundir!)
+- IP correto em `-ip` ou no `run_tests.py`
+- Teste manual com `sudo mn --controller=remote,...`
 
-### Descoberta de topologia sempre falha (`-1.0` no resultado)
+### Descoberta de topologia falha (`-1.0` no resultado)
 
-- Interface `-if` incorreta — use a que encaminha tráfego ao ONOS
-- Intervalo `-q` muito curto — aumente (ex.: `5` ou `10`)
+- Interface `-if` incorreta — use `ip route get <IP_CONTROLADOR>`
+- Aumente `-q` (intervalo de consulta REST)
 - Aumente `-c` (tolerância a falhas consecutivas)
-- Confirme que `workload.py` está criando switches (veja logs no terminal)
+- Confirme que switches estão subindo (`workload.py` nos logs)
 
 ### Erro de SSH no `ControllerMonitor`
 
-Edite `global_variables.py` com IP, usuário e senha corretos da VM ONOS. SSH deve estar habilitado e o processo `java` (ONOS) visível com `ps -C java`.
+Edite `global_variables.py` com IP, usuário e senha corretos. SSH deve estar habilitado na VM do controlador e o processo `java` visível com `ps -C java`.
 
-### E-mail no final do experimento falha
+### E-mail (opcional)
 
-Por padrão, o projeto **não envia e-mail**. Para habilitar, defina `SDNBM_SEND_EMAIL=1` e configure as variáveis abaixo.
-
-Variáveis de ambiente necessárias:
+Por padrão o projeto **não envia e-mail**. Para habilitar:
 
 ```bash
 export SDNBM_SEND_EMAIL=1
@@ -546,22 +584,22 @@ export SDNBM_EMAIL_FROM="seu@email.com"
 export SDNBM_EMAIL_TO="destino@email.com"
 export SDNBM_SMTP_USER="usuario_smtp"
 export SDNBM_SMTP_PASS="senha_ou_app_password"
-# opcionais
-export SDNBM_SMTP_HOST="smtp.gmail.com"
-export SDNBM_SMTP_PORT="587"
 ```
 
-### `response_time.py` / `throughput_request.py` dão erro de argumentos
+### OpenDaylight: switches não aparecem na REST
 
-Esses scripts referenciam parsers (`response_time`, `throughput`) que podem não existir em `arguments_parser.py`. Use **`northbound_api.py`** com `-rt` e `-tp`, que possui parser completo.
+- Confirme features instaladas: `odl-restconf`, `odl-l2switch-switch`
+- Verifique se o Mininet usa porta **6633** (não 6653)
+- Use `-n odl` em todos os scripts
 
-### Topologia `star` via `script_topology.py`
+### Topologia `star`
 
-O orquestrador `script_topology.py` monta comandos para `mesh`, `3-tier` e `leaf-spine`. Para `star`, execute `workload.py` e `topology_discovery.py` manualmente em terminais separados.
+O `run_tests.py` e `script_topology.py` suportam `mesh`, `leaf-spine` e `3-tier`. Para `star`, execute `workload.py` e `topology_discovery.py` manualmente em terminais separados.
 
 ---
 
-## Referência
+## Referências
 
 - [RFC 8456 — Benchmarking Methodology for SDN Controller Performance](https://www.rfc-editor.org/rfc/rfc8456.html)
 - [Documentação ONOS](https://wiki.onosproject.org/)
+- [Documentação OpenDaylight](https://docs.opendaylight.org/)
